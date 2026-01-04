@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 from helpers import NCF
 
 
-MODEL_PATH = "models/NeuMF-end.pth"
+MODEL_PATH = "models/NeuMF.pth"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 # Model hyperparameters (from training)
@@ -31,7 +31,7 @@ ITEM_NUM = 3533  # Number of items in the dataset
 FACTOR_NUM = 32  # Embedding dimension
 NUM_LAYERS = 3   # Number of MLP layers
 DROPOUT = 0.0    # Dropout rate
-MODEL_NAME = "NeuMF-end"
+MODEL_NAME = "NeuMF"
 
 # ============================================================================
 # MODEL LOADING
