@@ -6,30 +6,82 @@ from itertools import product
 
 
 def get_metrics(
-    model: nn.Module, train_set=data.Dataset, test_set=data.Dataset, device=None
+    model: nn.Module, train_set=data.Dataset, test_set=data.Dataset, device=None, item_based: bool = True
 ) -> np.float32:
     # Set device if not provided
     if device is None:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    # Get matrix from torch Dataset
-    test_mat = torch.Tensor(test_set.data).to(device)
+    model.eval()
+    
+    # Get original matrices (not transposed)
+    train_mat = torch.Tensor(train_set.original_data).to(device)
+    test_mat = torch.Tensor(test_set.original_data).to(device)
     test_mask = (test_mat > 0).to(device)
 
-    # Reconstruct the test matrix
-    reconstruction = model(test_mat)
+    if item_based:
+        # For item-based AutoRec: iterate over item vectors (columns)
+        # Each item vector is (num_users,) - ratings from all users for this item
+        num_items = train_mat.shape[1]
+        predictions = torch.zeros_like(test_mat).to(device)
+        
+        with torch.no_grad():
+            for item_idx in range(num_items):
+                # Get item vector from training matrix (column)
+                item_vec = train_mat[:, item_idx].unsqueeze(0)  # Shape: (1, num_users)
+                
+                # Reconstruct this item vector
+                reconstructed = model(item_vec)  # Shape: (1, num_users)
+                
+                # Clip predictions to valid rating range [1, 5] for MovieLens
+                reconstructed = torch.clamp(reconstructed, min=1.0, max=5.0)
+                
+                # Store predictions for all users for this item
+                predictions[:, item_idx] = reconstructed.squeeze(0)
+        
+        # Handle unseen items/users with default rating of 3
+        unseen_items = test_set.items - train_set.items
+        unseen_users = test_set.users - train_set.users
+        
+        for item_idx in unseen_items:
+            if item_idx < predictions.shape[1]:
+                predictions[:, item_idx] = 3.0
+        
+        for user_idx in unseen_users:
+            if user_idx < predictions.shape[0]:
+                predictions[user_idx, :] = 3.0
+    else:
+        # For user-based AutoRec: iterate over user vectors (rows)
+        num_users = train_mat.shape[0]
+        predictions = torch.zeros_like(test_mat).to(device)
+        
+        with torch.no_grad():
+            for user_idx in range(num_users):
+                # Get user vector from training matrix (row)
+                user_vec = train_mat[user_idx, :].unsqueeze(0)  # Shape: (1, num_items)
+                
+                # Reconstruct this user vector
+                reconstructed = model(user_vec)  # Shape: (1, num_items)
+                
+                # Clip predictions to valid rating range [1, 5] for MovieLens
+                reconstructed = torch.clamp(reconstructed, min=1.0, max=5.0)
+                
+                # Store predictions for all items for this user
+                predictions[user_idx, :] = reconstructed.squeeze(0)
+        
+        # Handle unseen items/users with default rating of 3
+        unseen_items = test_set.items - train_set.items
+        unseen_users = test_set.users - train_set.users
+        
+        for item_idx in unseen_items:
+            if item_idx < predictions.shape[1]:
+                predictions[:, item_idx] = 3.0
+        
+        for user_idx in unseen_users:
+            if user_idx < predictions.shape[0]:
+                predictions[user_idx, :] = 3.0
 
-    # Get unseen users and items
-    unseen_users = test_set.users - train_set.users
-    unseen_items = test_set.users - train_set.items
-
-    # Use a default rating of 3 for test users or
-    # items without training observations.
-    for item, user in product(unseen_items, unseen_users):
-        if test_mask[user, item]:
-            reconstruction[user, item] = 3
-
-    return masked_rmse(actual=test_mat, pred=reconstruction, mask=test_mask)
+    return masked_rmse(actual=test_mat, pred=predictions, mask=test_mask)
 
 
 def masked_rmse(
@@ -101,7 +153,8 @@ def get_ranking_metrics(
     train_set: data.Dataset, 
     test_set: data.Dataset, 
     top_k: int = 10,
-    device=None
+    device=None,
+    item_based: bool = True
 ) -> tuple:
     """
     Calculate HR@K and NDCG@K metrics for AutoRec model.
@@ -130,18 +183,49 @@ def get_ranking_metrics(
     
     model.eval()
     
-    # Get matrices
-    train_mat = torch.Tensor(train_set.data).to(device)
-    test_mat = torch.Tensor(test_set.data).to(device)
+    # Get original matrices (not transposed)
+    train_mat = torch.Tensor(train_set.original_data).to(device)
+    test_mat = torch.Tensor(test_set.original_data).to(device)
     
     # Get training mask (items seen in training)
     train_mask = (train_mat > 0).to(device)
     
     # Get predictions for all users
     with torch.no_grad():
-        # Use training matrix as input to predict ratings for all items
-        # This simulates: given what user has seen, what would they rate for unseen items?
-        predictions = model(train_mat)
+        if item_based:
+            # For item-based: predict ratings by reconstructing each item vector
+            num_items = train_mat.shape[1]
+            predictions = torch.zeros_like(train_mat).to(device)
+            
+            for item_idx in range(num_items):
+                # Get item vector from training matrix (column)
+                item_vec = train_mat[:, item_idx].unsqueeze(0)  # Shape: (1, num_users)
+                
+                # Reconstruct this item vector
+                reconstructed = model(item_vec)  # Shape: (1, num_users)
+                
+                # Clip predictions to valid rating range [1, 5] for MovieLens
+                reconstructed = torch.clamp(reconstructed, min=1.0, max=5.0)
+                
+                # Store predictions for all users for this item
+                predictions[:, item_idx] = reconstructed.squeeze(0)
+        else:
+            # For user-based: predict ratings by reconstructing each user vector
+            num_users = train_mat.shape[0]
+            predictions = torch.zeros_like(train_mat).to(device)
+            
+            for user_idx in range(num_users):
+                # Get user vector from training matrix (row)
+                user_vec = train_mat[user_idx, :].unsqueeze(0)  # Shape: (1, num_items)
+                
+                # Reconstruct this user vector
+                reconstructed = model(user_vec)  # Shape: (1, num_items)
+                
+                # Clip predictions to valid rating range [1, 5] for MovieLens
+                reconstructed = torch.clamp(reconstructed, min=1.0, max=5.0)
+                
+                # Store predictions for all items for this user
+                predictions[user_idx, :] = reconstructed.squeeze(0)
         
         # Mask out items seen in training (set to very low value)
         # This ensures we only recommend unseen items
