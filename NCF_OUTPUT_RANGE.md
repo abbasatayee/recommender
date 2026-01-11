@@ -21,16 +21,17 @@ return prediction.view(-1)  # Returns raw logits
 ### What Are Logits?
 
 **Logits** are the raw, unnormalized outputs from the final linear layer:
+
 - **Unbounded**: Can be any real number (-∞ to +∞)
 - **Examples**: -5.2, 0.0, 2.3, 10.7, -1.5, 15.9
 - **Meaning**: Higher values = higher confidence of interaction
 
 ### Logits vs Probabilities
 
-| Type | Range | How to Get | Example Values |
-|------|-------|------------|-----------------|
-| **Logits** (what NCF outputs) | (-∞, +∞) | Direct from model | -5.2, 0.0, 2.3, 10.7 |
-| **Probabilities** | [0, 1] | Apply sigmoid to logits | 0.005, 0.5, 0.91, 0.999 |
+| Type                          | Range    | How to Get              | Example Values          |
+| ----------------------------- | -------- | ----------------------- | ----------------------- |
+| **Logits** (what NCF outputs) | (-∞, +∞) | Direct from model       | -5.2, 0.0, 2.3, 10.7    |
+| **Probabilities**             | [0, 1]   | Apply sigmoid to logits | 0.005, 0.5, 0.91, 0.999 |
 
 ### Converting Logits to Probabilities
 
@@ -48,6 +49,7 @@ probability = torch.sigmoid(logit)  # e.g., 0.91 (91% chance of interaction)
 ```
 
 **Sigmoid transformation:**
+
 - logit = -5.0 → probability ≈ 0.007 (0.7%)
 - logit = 0.0 → probability = 0.5 (50%)
 - logit = 2.3 → probability ≈ 0.91 (91%)
@@ -56,6 +58,7 @@ probability = torch.sigmoid(logit)  # e.g., 0.91 (91% chance of interaction)
 ### Why BCEWithLogitsLoss?
 
 The model uses `BCEWithLogitsLoss` which:
+
 1. **Expects logits** (not probabilities)
 2. **Internally applies sigmoid** during loss calculation
 3. **Is numerically stable** (avoids overflow/underflow)
@@ -72,6 +75,7 @@ return score  # This is NOT between 0 and 1!
 ```
 
 **Example outputs you might see:**
+
 - User 1, Item 5: `score = 2.3` (logit, not probability)
 - User 1, Item 10: `score = -1.5` (negative logit)
 - User 1, Item 20: `score = 4.7` (high positive logit)
@@ -94,15 +98,15 @@ return probability  # e.g., 0.91 instead of 2.3
 
 ### Summary
 
-| Question | Answer |
-|----------|--------|
-| Are NCF scores between 0 and 1? | **NO** - they are unbounded logits |
-| What range are they? | (-∞, +∞) - any real number |
-| Can they be negative? | **YES** - negative logits are common |
-| Can they be > 1? | **YES** - positive logits can be any value |
-| How to get 0-1 range? | Apply `torch.sigmoid()` to logits |
-| What does the model output? | Raw logits (unbounded) |
-| What does BCEWithLogitsLoss expect? | Logits (it applies sigmoid internally) |
+| Question                            | Answer                                     |
+| ----------------------------------- | ------------------------------------------ |
+| Are NCF scores between 0 and 1?     | **NO** - they are unbounded logits         |
+| What range are they?                | (-∞, +∞) - any real number                 |
+| Can they be negative?               | **YES** - negative logits are common       |
+| Can they be > 1?                    | **YES** - positive logits can be any value |
+| How to get 0-1 range?               | Apply `torch.sigmoid()` to logits          |
+| What does the model output?         | Raw logits (unbounded)                     |
+| What does BCEWithLogitsLoss expect? | Logits (it applies sigmoid internally)     |
 
 ### Visual Example
 

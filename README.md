@@ -15,12 +15,14 @@ The project uses the MovieLens 1M dataset. The data is processed from the format
 ## Model Training
 
 ### NCF Model
+
 - Factor number: **32**
 - MLP layers: **3**
 - Epochs: **20**
 - The implementation replicates the performance of the original NCF paper using the same settings (batch size, learning rate, initialization methods) as Xiangnan's [keras repository](https://github.com/hexiangnan/neural_collaborative_filtering).
 
 ### AutoRec Model
+
 - Item-based autoencoder architecture
 - Hidden units: **500**
 - Trained on explicit ratings from the MovieLens dataset
@@ -199,8 +201,8 @@ Get top-K item recommendations for a user using NCF.
 {
   "user_id": 0,
   "recommendations": [
-    {"item_id": 1234, "score": 0.95},
-    {"item_id": 5678, "score": 0.92}
+    { "item_id": 1234, "score": 0.95 },
+    { "item_id": 5678, "score": 0.92 }
   ],
   "k": 10
 }
@@ -327,5 +329,6 @@ The API will automatically load these models on startup if they exist.
 ## License
 
 This project implements models from academic papers:
+
 - NCF: He et al. "Neural Collaborative Filtering" (WWW 2017)
 - AutoRec: Sedhain et al. "AutoRec: Autoencoders Meet Collaborative Filtering" (WWW 2015)
