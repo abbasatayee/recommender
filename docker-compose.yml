@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  recommender-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: recommender-api
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount models directory (read-only) - allows updating models without rebuilding
+      - ./models:/app/models:ro
+      # Mount data directory (read-only) - allows updating data without rebuilding
+      - ./data:/app/data:ro
+    env_file:
+      - .env  # Load environment variables from .env file if it exists
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

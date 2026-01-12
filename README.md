@@ -46,6 +46,18 @@ For a complete list of dependencies, see `requirements.txt`. Install all depende
 pip install -r requirements.txt
 ```
 
+## Docker Setup
+
+The application can be run using Docker for easier deployment and isolation. See [DOCKER.md](DOCKER.md) for detailed instructions.
+
+**Quick start with Docker Compose:**
+
+```bash
+docker-compose up --build
+```
+
+The API will be available at `http://localhost:8000`
+
 ## Inference API
 
 A FastAPI-based inference service is provided for making predictions and recommendations using trained NCF and AutoRec models.

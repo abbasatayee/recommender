@@ -281,6 +281,7 @@ class MovieMetadataManager:
 
 # Global instance
 _metadata_manager: Optional[MovieMetadataManager] = None
+_top_rated_movies_cache: Dict[tuple, List[int]] = {}  # Cache key: (top_n, min_ratings)
 
 
 def get_metadata_manager() -> MovieMetadataManager:
@@ -299,6 +300,7 @@ def get_movie_info(item_id: int) -> Optional[Dict[str, Any]]:
 def get_top_rated_movies(top_n: int = 100, min_ratings: int = 10) -> List[int]:
     """
     Get list of top-rated movie item IDs based on average ratings.
+    Uses the already-loaded training tensor to avoid reloading the ratings file.
     
     Args:
         top_n: Number of top movies to return (default: 100)
@@ -307,66 +309,62 @@ def get_top_rated_movies(top_n: int = 100, min_ratings: int = 10) -> List[int]:
     Returns:
         List of item IDs (0-indexed) for top-rated movies, sorted by average rating (descending)
     """
-    if not os.path.exists(RATINGS_FILE):
+    global _top_rated_movies_cache
+    
+    # Check cache first
+    cache_key = (top_n, min_ratings)
+    if cache_key in _top_rated_movies_cache:
+        return _top_rated_movies_cache[cache_key]
+    
+    # Use the already-loaded training tensor from the service instead of loading ratings file
+    from .service import get_autorec_engine
+    
+    engine = get_autorec_engine()
+    train_tensor = engine.training_tensor
+    
+    if train_tensor is None:
+        _top_rated_movies_cache[cache_key] = []
         return []
     
-    # Load ratings
-    ratings_df = None
-    for encoding in SUPPORTED_ENCODINGS:
-        try:
-            ratings_df = pd.read_csv(
-                RATINGS_FILE,
-                sep='::',
-                header=None,
-                names=['user_id', 'item_id', 'rating', 'timestamp'],
-                engine='python',
-                encoding=encoding,
-                dtype={'user_id': np.int32, 'item_id': np.int32, 'rating': np.float32}
-            )
-            break
-        except UnicodeDecodeError:
-            continue
-        except Exception:
-            continue
+    # Convert to numpy for easier computation
+    train_mat = train_tensor.cpu().numpy()
     
-    if ratings_df is None:
+    # Calculate average ratings per item (column-wise)
+    # train_mat shape: (num_users, num_items)
+    # For each item (column), calculate mean rating and count of ratings
+    item_ratings = []
+    num_items = train_mat.shape[1]
+    
+    for item_id in range(num_items):
+        item_ratings_vec = train_mat[:, item_id]
+        # Get non-zero ratings (actual ratings, not missing values)
+        non_zero_ratings = item_ratings_vec[item_ratings_vec > 0]
+        
+        if len(non_zero_ratings) >= min_ratings:
+            avg_rating = float(np.mean(non_zero_ratings))
+            num_ratings = len(non_zero_ratings)
+            item_ratings.append((item_id, avg_rating, num_ratings))
+    
+    if not item_ratings:
+        _top_rated_movies_cache[cache_key] = []
         return []
-    
-    # Note: ratings_df['item_id'] contains original movie IDs from the dataset
-    # We need to map them to 0-indexed item IDs used by the model
-    
-    # Calculate average ratings per movie (using original movie IDs)
-    movie_stats = ratings_df.groupby('item_id').agg({
-        'rating': ['mean', 'count']
-    }).reset_index()
-    movie_stats.columns = ['movie_id', 'avg_rating', 'num_ratings']
-    
-    # Filter by minimum ratings
-    movie_stats = movie_stats[movie_stats['num_ratings'] >= min_ratings]
     
     # Sort by average rating (descending)
-    movie_stats = movie_stats.sort_values('avg_rating', ascending=False)
+    item_ratings.sort(key=lambda x: x[1], reverse=True)
     
-    # Get top N movies (still using original movie IDs)
-    top_movie_ids = movie_stats.head(top_n)['movie_id'].tolist()
+    # Get top N movies
+    top_item_ids = [item_id for item_id, _, _ in item_ratings[:top_n]]
     
-    # Create reverse mapping: movie_id -> item_id (0-indexed)
-    metadata_manager = get_metadata_manager()
-    movie_to_item = {movie_id: item_id for item_id, movie_id in metadata_manager.item_to_movie_mapping.items()}
+    # Cache the result
+    _top_rated_movies_cache[cache_key] = top_item_ids
     
-    # Map original movie IDs to item IDs (0-indexed)
-    item_ids = []
-    for movie_id in top_movie_ids:
-        item_id = movie_to_item.get(movie_id)
-        if item_id is not None:
-            item_ids.append(item_id)
-    
-    return item_ids
+    return top_item_ids
 
 
 def get_user_seen_movies(user_id: int) -> set:
     """
     Get set of item IDs that a user has already rated/seen.
+    Uses the already-loaded training matrix from the service.
     
     Args:
         user_id: User ID (0-indexed, as used by the model)
@@ -374,20 +372,21 @@ def get_user_seen_movies(user_id: int) -> set:
     Returns:
         Set of item IDs (0-indexed) that the user has seen
     """
-    from .data_loader import load_training_matrix
+    from .service import get_autorec_engine
     
-    # Load the training matrix which already has the correct mapping
-    train_mat = load_training_matrix()
+    # Get the training tensor from the engine (already loaded)
+    engine = get_autorec_engine()
+    train_tensor = engine.training_tensor
     
-    if train_mat is None:
+    if train_tensor is None:
         return set()
     
     # Validate user_id
-    if not (0 <= user_id < train_mat.shape[0]):
+    if not (0 <= user_id < train_tensor.shape[0]):
         return set()
     
     # Get all items this user has rated (non-zero entries in the user's row)
-    user_ratings = train_mat[user_id, :]
+    user_ratings = train_tensor[user_id, :].cpu().numpy()
     seen_item_ids = set(np.where(user_ratings > 0)[0].tolist())
     
     return seen_item_ids
