@@ -9,7 +9,7 @@ from ..models.schemas import (
     MovieDetails
 )
 from ..core.service import get_autorec_engine
-from ..core.movie_metadata import get_metadata_manager
+from ..core.movie_metadata import get_metadata_manager, get_random_top_rated_movie
 
 router = APIRouter(prefix="/autorec", tags=["AutoRec"])
 
@@ -70,3 +70,40 @@ async def recommend(request: RecommendationRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Recommendation failed: {str(e)}")
+
+
+@router.get("/random-top-rated", response_model=PredictionResponse)
+async def get_random_top_rated(user_id: int):
+    """
+    Get a random top-rated movie that the user has not seen before.
+    
+    Args:
+        user_id: User ID (0-indexed) to exclude their seen movies
+    """
+    try:
+        # Validate user_id
+        engine = get_autorec_engine()
+        engine.validate_user(user_id, engine.config["user_num"], engine.model_name)
+        
+        result = get_random_top_rated_movie(user_id=user_id, top_n=100, min_ratings=10)
+        
+        if result is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No unseen top-rated movies found for user {user_id}. The user may have already seen all top-rated movies."
+            )
+        
+        item_id, movie_info = result
+        movie_details = MovieDetails(**movie_info)
+        
+        return PredictionResponse(
+            user_id=user_id,
+            item_id=item_id,
+            score=5.0,  # Top-rated movies have high scores
+            movie=movie_details,
+            message="Random top-rated movie retrieved successfully"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get random top-rated movie: {str(e)}")

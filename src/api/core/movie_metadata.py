@@ -5,6 +5,7 @@ import os
 import pandas as pd
 import numpy as np
 import urllib.parse
+import random
 from typing import Dict, List, Optional, Any
 from ..config import SUPPORTED_ENCODINGS, MOVIES_FILE, RATINGS_FILE, LINKS_FILE
 from .tmdb_service import get_tmdb_service
@@ -293,3 +294,137 @@ def get_metadata_manager() -> MovieMetadataManager:
 def get_movie_info(item_id: int) -> Optional[Dict[str, Any]]:
     """Get movie information for a given item_id (convenience function)."""
     return get_metadata_manager().get_movie_info(item_id)
+
+
+def get_top_rated_movies(top_n: int = 100, min_ratings: int = 10) -> List[int]:
+    """
+    Get list of top-rated movie item IDs based on average ratings.
+    
+    Args:
+        top_n: Number of top movies to return (default: 100)
+        min_ratings: Minimum number of ratings required for a movie to be considered (default: 10)
+    
+    Returns:
+        List of item IDs (0-indexed) for top-rated movies, sorted by average rating (descending)
+    """
+    if not os.path.exists(RATINGS_FILE):
+        return []
+    
+    # Load ratings
+    ratings_df = None
+    for encoding in SUPPORTED_ENCODINGS:
+        try:
+            ratings_df = pd.read_csv(
+                RATINGS_FILE,
+                sep='::',
+                header=None,
+                names=['user_id', 'item_id', 'rating', 'timestamp'],
+                engine='python',
+                encoding=encoding,
+                dtype={'user_id': np.int32, 'item_id': np.int32, 'rating': np.float32}
+            )
+            break
+        except UnicodeDecodeError:
+            continue
+        except Exception:
+            continue
+    
+    if ratings_df is None:
+        return []
+    
+    # Note: ratings_df['item_id'] contains original movie IDs from the dataset
+    # We need to map them to 0-indexed item IDs used by the model
+    
+    # Calculate average ratings per movie (using original movie IDs)
+    movie_stats = ratings_df.groupby('item_id').agg({
+        'rating': ['mean', 'count']
+    }).reset_index()
+    movie_stats.columns = ['movie_id', 'avg_rating', 'num_ratings']
+    
+    # Filter by minimum ratings
+    movie_stats = movie_stats[movie_stats['num_ratings'] >= min_ratings]
+    
+    # Sort by average rating (descending)
+    movie_stats = movie_stats.sort_values('avg_rating', ascending=False)
+    
+    # Get top N movies (still using original movie IDs)
+    top_movie_ids = movie_stats.head(top_n)['movie_id'].tolist()
+    
+    # Create reverse mapping: movie_id -> item_id (0-indexed)
+    metadata_manager = get_metadata_manager()
+    movie_to_item = {movie_id: item_id for item_id, movie_id in metadata_manager.item_to_movie_mapping.items()}
+    
+    # Map original movie IDs to item IDs (0-indexed)
+    item_ids = []
+    for movie_id in top_movie_ids:
+        item_id = movie_to_item.get(movie_id)
+        if item_id is not None:
+            item_ids.append(item_id)
+    
+    return item_ids
+
+
+def get_user_seen_movies(user_id: int) -> set:
+    """
+    Get set of item IDs that a user has already rated/seen.
+    
+    Args:
+        user_id: User ID (0-indexed, as used by the model)
+    
+    Returns:
+        Set of item IDs (0-indexed) that the user has seen
+    """
+    from .data_loader import load_training_matrix
+    
+    # Load the training matrix which already has the correct mapping
+    train_mat = load_training_matrix()
+    
+    if train_mat is None:
+        return set()
+    
+    # Validate user_id
+    if not (0 <= user_id < train_mat.shape[0]):
+        return set()
+    
+    # Get all items this user has rated (non-zero entries in the user's row)
+    user_ratings = train_mat[user_id, :]
+    seen_item_ids = set(np.where(user_ratings > 0)[0].tolist())
+    
+    return seen_item_ids
+
+
+def get_random_top_rated_movie(user_id: Optional[int] = None, top_n: int = 100, min_ratings: int = 10) -> Optional[tuple]:
+    """
+    Get a random top-rated movie, excluding movies the user has already seen.
+    
+    Args:
+        user_id: User ID (0-indexed). If provided, excludes movies the user has seen.
+        top_n: Number of top movies to consider (default: 100)
+        min_ratings: Minimum number of ratings required (default: 10)
+    
+    Returns:
+        Tuple of (item_id, movie_info_dict), or None if no movies found
+    """
+    top_movies = get_top_rated_movies(top_n=top_n, min_ratings=min_ratings)
+    
+    if not top_movies:
+        return None
+    
+    # Filter out movies the user has seen
+    if user_id is not None:
+        seen_movies = get_user_seen_movies(user_id)
+        top_movies = [item_id for item_id in top_movies if item_id not in seen_movies]
+    
+    if not top_movies:
+        return None
+    
+    # Randomly select one
+    random_item_id = random.choice(top_movies)
+    
+    # Get movie info
+    movie_info = get_movie_info(random_item_id)
+    
+    if movie_info is None:
+        return None
+    
+    return (random_item_id, movie_info)
