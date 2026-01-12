@@ -13,6 +13,7 @@ AUTOREC_MODEL_PATH = "models/AutoRec-best.pth"
 TRAIN_DATA_PATH = "data/ml-1m.train.rating"
 RATINGS_FILE = "data/ml-1m/ratings.dat"
 MOVIES_FILE = "data/ml-1m/movies.dat"
+LINKS_FILE = "data/link.csv"
 
 # ============================================================================
 # DEVICE CONFIGURATION

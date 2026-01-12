@@ -12,6 +12,12 @@ class MovieDetails(BaseModel):
     genres: List[str]
     tags: List[str]  # Same as genres
     imdb_url: str
+    imdb_id: Optional[int] = None
+    tmdb_id: Optional[int] = None
+    tmdb_url: Optional[str] = None
+    poster_url: Optional[str] = None  # Direct URL to poster image
+    backdrop_url: Optional[str] = None  # Direct URL to backdrop image
+    trailer_url: Optional[str] = None  # YouTube trailer URL
 
 
 class PredictionRequest(BaseModel):

@@ -59,6 +59,7 @@ pyarrow             20.0.0
 pycodestyle         2.13.0
 pydantic            2.11.5
 pydantic_core       2.33.2
+python-dotenv       1.0.0
 pyflakes            3.3.2
 Pygments            2.19.2
 pyparsing           3.3.1

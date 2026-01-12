@@ -12,6 +12,21 @@ src_path = os.path.dirname(api_dir)
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
+# Load .env file from project root before importing other modules
+try:
+    from dotenv import load_dotenv
+    project_root = os.path.dirname(src_path)
+    env_path = os.path.join(project_root, '.env')
+    if os.path.exists(env_path):
+        load_dotenv(env_path)
+        print(f"✓ Loaded .env file from {env_path}")
+    else:
+        load_dotenv()  # Try current directory
+except ImportError:
+    pass  # python-dotenv not installed
+except Exception as e:
+    print(f"⚠ Warning: Could not load .env file: {e}")
+
 import uvicorn
 from fastapi import FastAPI
 
