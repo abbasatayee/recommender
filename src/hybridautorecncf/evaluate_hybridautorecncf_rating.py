@@ -131,8 +131,13 @@ class NCF(nn.Module):
         latent_dim,
         mlp_layers=(128, 64),
         dropout_rate=0.1,
+        rating_min=1.0,
+        rating_max=5.0,
     ):
         super().__init__()
+        
+        self.rating_min = rating_min
+        self.rating_max = rating_max
 
         # MLP
         mlp_modules = []
@@ -169,9 +174,13 @@ class NCF(nn.Module):
 
         # Final prediction
         concat = torch.cat([gmf_out, mlp_out], dim=1)
-        pred = self.output(concat)
+        logits = self.output(concat)
+        
+        # Constrain output to [rating_min, rating_max] using sigmoid
+        # sigmoid maps to [0, 1], then scale to [rating_min, rating_max]
+        rating_range = self.rating_max - self.rating_min
+        pred = torch.sigmoid(logits) * rating_range + self.rating_min
 
-        # Return raw prediction (use MSE loss, no sigmoid scaling)
         return pred.squeeze(-1)
 
 
