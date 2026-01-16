@@ -307,17 +307,16 @@ def load_data():
     for _, row in test_df.iterrows():
         test_mat[int(row['user_id']), int(row['item_id'])] = row['rating']
     
-    # NOTE: To match training notebook exactly, we use test_mat for test dataset
-    # (even though this causes data leakage - test ratings are used to construct user/item vectors)
-    # The training notebook uses test_mat for test_dataset, so we match that behavior
+    # IMPORTANT: Use train_mat for test dataset to prevent data leakage
+    # User/item vectors should only contain training data, not test ratings
     print(f"✓ Preprocessing complete!")
     print(f"  - Users: {num_users}, Items: {num_items}")
     print(f"  - Train interactions: {len(train_df):,}")
     print(f"  - Test interactions: {len(test_df):,}")
-    print(f"  - Using test_mat for test dataset (matching training notebook)")
+    print(f"  - Using train_mat for test dataset (no data leakage)")
     print("=" * 70)
     
-    return train_mat, test_mat, train_df, test_df, num_users, num_items
+    return train_mat, train_df, test_df, num_users, num_items
 
 
 def evaluate_model(model, test_loader, device):
@@ -426,13 +425,13 @@ def main():
     
     # Load data
     print("\nLoading data...")
-    train_mat, test_mat, train_df, test_df, num_users, num_items = load_data()
+    train_mat, train_df, test_df, num_users, num_items = load_data()
     
     print(f"\nTest set: {len(test_df):,} ratings")
     
-    # Create test dataset using test_mat (matching training notebook behavior)
-    # NOTE: This causes data leakage but matches what was done during training
-    test_dataset = HybridDataset(test_mat, test_df)
+    # Create test dataset using train_mat (proper evaluation - no data leakage)
+    # User/item vectors are constructed from training data only
+    test_dataset = HybridDataset(train_mat, test_df)
     test_loader = data.DataLoader(
         test_dataset,
         batch_size=BATCH_SIZE,
