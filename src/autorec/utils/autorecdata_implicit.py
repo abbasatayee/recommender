@@ -1,6 +1,5 @@
 import numpy as np
 import torch.utils.data as data
-import scipy.sparse as sp
 
 
 class AutoRecImplicitData(data.Dataset):
